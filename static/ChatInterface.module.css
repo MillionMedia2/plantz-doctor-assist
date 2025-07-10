@@ -1,0 +1,255 @@
+.chatContainer {
+  display: flex;
+  flex-direction: column;
+  background-color: white;
+  overflow: hidden;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  height: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem;
+  background-color: #33475b;
+}
+
+.header h2 {
+  color: white;
+  font-size: 1.125rem;
+  font-weight: 500;
+}
+
+.messageContainer {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column-reverse;
+  padding: 1rem;
+  background-color: #f5f8fa;
+  min-height: 0;
+}
+
+.messageContainer > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.message {
+  margin-bottom: 1rem;
+  display: flex;
+}
+
+.userMessage {
+  justify-content: flex-end;
+}
+
+.assistantMessage {
+  justify-content: flex-start;
+}
+
+.messageBubble {
+  padding: 0.75rem 1rem;
+  max-width: 85%;
+  border-radius: 0.5rem;
+}
+
+.messageBubble h1 {
+  font-size: 1.25rem;
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+}
+
+.messageBubble h2 {
+  font-size: 1.125rem;
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+}
+
+.messageBubble h3 {
+  font-size: 1rem;
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+}
+
+.messageBubble ul {
+  list-style-type: disc;
+  padding-left: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.messageBubble ol {
+  list-style-type: decimal;
+  padding-left: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.messageBubble li {
+  margin-bottom: 0.25rem;
+}
+
+.messageBubble p {
+  margin-bottom: 0.5rem;
+}
+
+.messageBubble p:last-child {
+  margin-bottom: 0;
+}
+
+.userBubble {
+  background-color: #33475b;
+  color: white;
+  margin-left: auto;
+  border-radius: 0.5rem;
+  border-bottom-right-radius: 0;
+}
+
+.assistantBubble {
+  background-color: white;
+  color: #1f2937;
+  border-bottom-left-radius: 4px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.inputContainer {
+  padding: 1rem;
+  border-top: 1px solid #e5e7eb;
+  background-color: white;
+}
+
+.inputForm {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.input {
+  flex: 1;
+  padding: 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  outline: none;
+}
+
+.input:focus {
+  border-color: #33475b;
+  box-shadow: 0 0 0 2px rgba(51, 71, 91, 0.1);
+}
+
+/* Add mobile styles */
+@media (max-width: 768px) {
+  .input {
+    max-width: calc(100% - 60px);
+  }
+  
+  .sendButton {
+    min-width: 50px;
+    padding: 3px 10px;
+  }
+}
+
+.sendButton {
+  padding: 0.75rem 1rem;
+  background-color: #33475b;
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.sendButton:hover:not(:disabled) {
+  background-color: #425b76;
+}
+
+.sendButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.faqSection {
+  padding: 1rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.faqButton {
+  width: 100%;
+  padding: 1rem;
+  text-align: left;
+  background-color: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 1rem;
+}
+
+/* Add mobile styles */
+@media (max-width: 768px) {
+  .faqButton {
+    padding: 0.75rem;
+    font-size: 0.95rem;
+    margin-bottom: 0.5rem;
+  }
+}
+
+.faqButton:hover {
+  background-color: #f5f8fa;
+}
+
+.authContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 2rem;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.authForm {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+  max-width: 400px;
+}
+
+.button {
+  padding: 0.75rem;
+  background-color: #0070f3;
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.button:hover {
+  background-color: #0051a8;
+}
+
+.switchButton {
+  padding: 0.75rem;
+  background-color: transparent;
+  color: #0070f3;
+  border: none;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.switchButton:hover {
+  color: #0051a8;
+}
+
+.error {
+  color: #dc2626;
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+} 

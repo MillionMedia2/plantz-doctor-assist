@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Doctor Assist Chatbot</title>
+  <link rel="stylesheet" href="/static/chatinterface.css">
+</head>
+<body>
+  <div class="chatContainer">
+    <div class="header">
+      <div style="display: flex; align-items: center;">
+        <h2>Doctor Assist</h2>
+        <!-- <div id="status-dot" class="ml-2" style="width: 8px; height: 8px; border-radius: 50%; background: #f44336; margin-left: 8px;"></div> -->
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <!-- <button title="Logout" class="icon-btn" id="logout-btn">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-log-out"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button> -->
+        <button title="Chat History" class="icon-btn" id="history-btn">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-message-square"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </button>
+        <button title="New Chat" class="icon-btn" id="newchat-btn">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-plus-circle"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        </button>
+        <button title="Download Chat" class="icon-btn" id="download-btn">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-download"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="messageContainer">
+      <div id="messages"></div>
+      <div class="inputContainer">
+        <div id="thinking-indicator"></div>
+        <form id="chat-form" class="inputForm">
+          <input type="text" id="user-input" class="input" placeholder="Write a message..." autocomplete="off" />
+          <button type="submit" class="sendButton" id="send-btn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-send"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </form>
+        <div class="footer">
+          Powered by <a href="https://plantz.io" target="_blank" rel="noopener noreferrer">Plantz</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="/static/chatbot.js"></script>
+</body>
+</html> 
