@@ -67,7 +67,6 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   async function sendMessage() {
-    console.log('sendMessage called');
     const text = input.value.trim();
     if (!text) return;
     addMessage('user', text);
@@ -76,7 +75,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     let assistantMsg = '';
     let assistantDiv = null;
-
     function startAssistantMsg() {
       assistantDiv = document.createElement('div');
       assistantDiv.className = 'message assistantMessage';
@@ -111,13 +109,24 @@ document.addEventListener('DOMContentLoaded', function() {
           if (line.startsWith('data: ')) {
             try {
               const chunk = JSON.parse(line.slice(6));
-              if (chunk.type === 'response.output_text.delta' && chunk.delta) {
-                if (!bubble) bubble = startAssistantMsg();
-                assistantMsg += chunk.delta;
-                bubble.innerHTML = markdownToSafeHtml(assistantMsg);
-                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+              if (
+                chunk.event === 'thread.message.delta' &&
+                chunk.data &&
+                chunk.data.delta &&
+                chunk.data.delta.content
+              ) {
+                for (const block of chunk.data.delta.content) {
+                  if (block.type === 'text' && block.text && block.text.value) {
+                    if (!bubble) bubble = startAssistantMsg();
+                    assistantMsg += block.text.value;
+                    bubble.innerHTML = markdownToSafeHtml(assistantMsg);
+                    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                  }
+                }
               }
-            } catch (e) { console.log('parse error', e, line); }
+            } catch (e) {
+              // Ignore parse errors for non-data lines
+            }
           }
         }
       }
@@ -125,7 +134,6 @@ document.addEventListener('DOMContentLoaded', function() {
         addMessage('assistant', assistantMsg);
       }
     } catch (err) {
-      console.log('sendMessage error', err);
       hideThinking();
       addMessage('assistant', 'Sorry, there was an error.');
     }
