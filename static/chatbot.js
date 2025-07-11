@@ -23,11 +23,27 @@ document.addEventListener('DOMContentLoaded', function() {
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
   }
 
+  let thinkingTimeout1 = null;
+  let thinkingTimeout2 = null;
+
   function showThinking() {
-    thinkingDiv.innerHTML = '<div class="thinking-dots"><span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-dot"></span></div>';
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    clearTimeout(thinkingTimeout1);
+    clearTimeout(thinkingTimeout2);
+    thinkingDiv.innerHTML = '<span id="thinking-text">Thinking</span><span class="thinking-dots"><span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-dot"></span></span>';
+    // After 10 seconds, update to 'Still Thinking'
+    thinkingTimeout1 = setTimeout(() => {
+      const text = document.getElementById('thinking-text');
+      if (text) text.textContent = 'Still Thinking';
+    }, 10000);
+    // After 20 seconds, update to 'Nearly there'
+    thinkingTimeout2 = setTimeout(() => {
+      const text = document.getElementById('thinking-text');
+      if (text) text.textContent = 'Nearly there';
+    }, 20000);
   }
   function hideThinking() {
+    clearTimeout(thinkingTimeout1);
+    clearTimeout(thinkingTimeout2);
     thinkingDiv.innerHTML = '';
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
   }
@@ -93,7 +109,6 @@ document.addEventListener('DOMContentLoaded', function() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ input: text })
       });
-      hideThinking();
       if (!response.body) throw new Error('No response body');
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -118,6 +133,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 for (const block of chunk.data.delta.content) {
                   if (block.type === 'text' && block.text && block.text.value) {
                     if (!bubble) bubble = startAssistantMsg();
+                    // Remove thinking indicator right before showing first assistant text
+                    if (thinkingDiv.innerHTML) hideThinking();
                     assistantMsg += block.text.value;
                     bubble.innerHTML = markdownToSafeHtml(assistantMsg);
                     messagesDiv.scrollTop = messagesDiv.scrollHeight;
@@ -131,6 +148,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
       }
       if (!bubble && assistantMsg) {
+        hideThinking();
         addMessage('assistant', assistantMsg);
       }
     } catch (err) {
