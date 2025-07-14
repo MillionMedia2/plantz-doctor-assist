@@ -66,7 +66,7 @@ doctor-assist-py/
 ## Embedding
 - Use an `<iframe src="https://your-vercel-app.vercel.app/" ...>` to embed the chatbot anywhere.
 
----
+--- 
 
 **For any changes to the chat UI, always edit `chatinterface.css` (not `style.css`).**
 

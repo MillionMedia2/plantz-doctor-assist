@@ -2,7 +2,6 @@ import os
 import uuid
 from fastapi import FastAPI, Request, Response, Cookie
 from fastapi.responses import StreamingResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -24,12 +23,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve public files at /public for local development and Vercel
-# app.mount("/public", StaticFiles(directory="public", html=True), name="public")
-
+# Root endpoint - Vercel will serve index.html from public/
 @app.get("/")
 def root():
-    return FileResponse("public/index.html")
+    return {"message": "Doctor Assist API is running"}
 
 # In-memory session_id -> thread_id mapping
 session_threads = {}
