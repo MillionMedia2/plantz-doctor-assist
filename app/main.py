@@ -24,8 +24,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve static files at /static
-app.mount("/static", StaticFiles(directory="static", html=True), name="static")
+# Serve public files at /public for local development and Vercel
+# app.mount("/public", StaticFiles(directory="public", html=True), name="public")
 
 @app.get("/")
 def root():
