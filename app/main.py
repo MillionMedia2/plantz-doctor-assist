@@ -1,7 +1,8 @@
 import os
 import uuid
 from fastapi import FastAPI, Request, Response, Cookie
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -23,12 +24,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Root endpoint - Vercel will serve index.html from public/
-@app.get("/")
-def root():
-    return {"message": "Doctor Assist API is running"}
+# Serve static files for local development only
+if os.environ.get("VERCEL") is None and os.path.exists("public"):
+    app.mount("/", StaticFiles(directory="public", html=True), name="public")
 
-# In-memory session_id -> thread_id mapping
 session_threads = {}
 SESSION_COOKIE_NAME = "doctor_assist_session"
 
@@ -39,35 +38,27 @@ async def chat_endpoint(request: Request, response: Response, session_id: str = 
     if not user_input:
         return {"error": "No input provided"}
 
-    # Session management
     if not session_id:
         session_id = str(uuid.uuid4())
         response.set_cookie(key=SESSION_COOKIE_NAME, value=session_id, httponly=True, samesite="lax")
-    
-    # Thread management
     if session_id not in session_threads:
         thread = openai.beta.threads.create()
         session_threads[session_id] = thread.id
     thread_id = session_threads[session_id]
 
-    # Add user message to thread
     openai.beta.threads.messages.create(
         thread_id=thread_id,
         role="user",
         content=user_input
     )
 
-    # Run the assistant and stream response
     def event_stream():
-        print("Started streaming run...")
         run = openai.beta.threads.runs.create(
             thread_id=thread_id,
             assistant_id=ASSISTANT_ID,
             stream=True
         )
         for chunk in run:
-            print("Got chunk:", chunk)
-            # Ensure chunk is JSON serializable
             if hasattr(chunk, "model_dump"):
                 serializable_chunk = chunk.model_dump()
             elif hasattr(chunk, "dict"):
@@ -77,7 +68,6 @@ async def chat_endpoint(request: Request, response: Response, session_id: str = 
             else:
                 serializable_chunk = str(chunk)
             yield f"data: {json.dumps(serializable_chunk)}\n\n"
-        print("Finished streaming run.")
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
