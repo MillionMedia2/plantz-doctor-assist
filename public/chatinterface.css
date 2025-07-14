@@ -1,7 +1,8 @@
 html, body {
-  font-family: system-ui, sans-serif;
+  height: 100%;
   margin: 0;
   padding: 0;
+  overflow: hidden; /* Prevents scrollbars on the iframe content */
 }
 .chatContainer {
   display: flex;
@@ -11,7 +12,9 @@ html, body {
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   max-width: 800px;
   margin: 0 auto;
-  height: 700px;
+  height: 100vh;
+  box-sizing: border-box;
+  overflow: auto; /* Only scrolls if content actually overflows */
 }
 .header {
   background: #33475b;
