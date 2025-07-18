@@ -9,7 +9,24 @@ import json
 import asyncio
 from agents import Agent, Runner
 from agents.tool import FunctionTool, FileSearchTool
-import api.airtable_tools as airtable_tools
+try:
+    import api.airtable_tools as airtable_tools
+except ImportError:
+    # Create a mock airtable_tools module if import fails
+    class MockAirtableTools:
+        @staticmethod
+        def get_product_prices(product_name):
+            return f"No price data available for {product_name} (Airtable tools not available)"
+        
+        @staticmethod
+        def filter_products(**kwargs):
+            return "No products found (Airtable tools not available)"
+        
+        @staticmethod
+        def get_latest_products(**kwargs):
+            return "No latest products found (Airtable tools not available)"
+    
+    airtable_tools = MockAirtableTools()
 from typing import Optional
 
 load_dotenv()
@@ -17,9 +34,24 @@ load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 VECTOR_STORE_ID = os.getenv("DOCTOR_ASSIST_VECTOR") or ""
 
-INSTRUCTIONS_PATH = os.path.join(os.path.dirname(__file__), "..", "instructions", "doctor_assist.md")
-with open(INSTRUCTIONS_PATH, "r") as f:
-    SYSTEM_PROMPT = f.read()
+# Try to read instructions file, fallback to default if not found
+try:
+    INSTRUCTIONS_PATH = os.path.join(os.path.dirname(__file__), "..", "instructions", "doctor_assist.md")
+    with open(INSTRUCTIONS_PATH, "r") as f:
+        SYSTEM_PROMPT = f.read()
+except FileNotFoundError:
+    # Fallback instructions if file not found
+    SYSTEM_PROMPT = """You are Plantz Doctor Assist, a helpful and expert assistant in medical cannabis. Your role is to support licensed doctors in selecting the most appropriate cannabis-based products for their patients.
+
+You must always retrieve information using the available tools. Do not guess, invent, or answer from your own training data. If no relevant information is found, politely explain that the data is not available.
+
+When a doctor asks for a product recommendation:
+1. Identify the patient's condition or symptom
+2. Use the available tools to find relevant products
+3. Recommend products that match the condition
+4. If no products are found, ask the doctor to clarify
+
+Always use the available tools for any factual question about products, prices, or medical uses."""
 
 # Airtable tool wrappers
 async def async_get_product_prices(ctx, args):
@@ -130,12 +162,22 @@ file_search_tool = FileSearchTool(
 )
 
 # Create the agent with all tools
-agent = Agent(
-    name="DoctorAssistAgent",
-    instructions=SYSTEM_PROMPT,
-    tools=[file_search_tool, get_product_prices_tool, filter_products_tool, get_latest_products_tool],
-    model="gpt-4.1-mini",
-)
+try:
+    agent = Agent(
+        name="DoctorAssistAgent",
+        instructions=SYSTEM_PROMPT,
+        tools=[file_search_tool, get_product_prices_tool, filter_products_tool, get_latest_products_tool],
+        model="gpt-4.1-mini",
+    )
+except Exception as e:
+    print(f"Error creating agent: {e}")
+    # Create a minimal agent without tools if creation fails
+    agent = Agent(
+        name="DoctorAssistAgent",
+        instructions=SYSTEM_PROMPT,
+        tools=[],
+        model="gpt-4.1-mini",
+    )
 
 app = FastAPI()
 
@@ -194,6 +236,8 @@ async def chat_endpoint(request: Request, response: Response, previous_response_
                         print(f"[DEBUG] Agent updated: {event.new_agent.name}")
             except Exception as e:
                 print(f"[DEBUG] Exception in event_stream: {e}")
+                import traceback
+                traceback.print_exc()
                 yield f"data: {{\"event\": \"error\", \"data\": {{\"error\": {json.dumps(str(e))} }} }}\n\n"
         # Stream the response and set the cookie after the run
         streaming_response = StreamingResponse(event_stream(), media_type="text/event-stream")
