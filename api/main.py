@@ -4,46 +4,138 @@ from fastapi import FastAPI, Request, Response, Cookie
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from openai import OpenAI
-import httpx
 from dotenv import load_dotenv
 import json
+import asyncio
+from agents import Agent, Runner
+from agents.tool import FunctionTool, FileSearchTool
+import api.airtable_tools as airtable_tools
+from typing import Optional
 
 load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-ASSISTANT_ID = os.getenv("ASSISTANT_ID")
-AIRTABLE_API_KEY = os.getenv("AIRTABLE_API_KEY")
-AIRTABLE_BASE_ID = os.getenv("AIRTABLE_BASE_ID")
-AIRTABLE_TABLE_ID = os.getenv("AIRTABLE_TABLE_ID")
+VECTOR_STORE_ID = os.getenv("DOCTOR_ASSIST_VECTOR") or ""
 
-openai = OpenAI(api_key=OPENAI_API_KEY)
+INSTRUCTIONS_PATH = os.path.join(os.path.dirname(__file__), "..", "instructions", "doctor_assist.md")
+with open(INSTRUCTIONS_PATH, "r") as f:
+    SYSTEM_PROMPT = f.read()
 
+# Airtable tool wrappers
+async def async_get_product_prices(ctx, args):
+    if isinstance(args, str):
+        args = json.loads(args)
+    product_name = args.get("product_name")
+    print(f"[DEBUG] get_product_prices called with: {product_name}")
+    result = airtable_tools.get_product_prices(product_name)
+    print(f"[DEBUG] get_product_prices result: {result}")
+    return result
 
-def get_price_and_date(item_name: str):
-    """Retrieve price and date fields from Airtable for the given item."""
-    if not (AIRTABLE_API_KEY and AIRTABLE_BASE_ID and AIRTABLE_TABLE_ID):
-        return {"error": "Airtable environment variables not configured"}
+async def async_filter_products(ctx, args):
+    if isinstance(args, str):
+        args = json.loads(args)
+    return airtable_tools.filter_products(
+        product_type=args.get("product_type"),
+        condition=args.get("condition"),
+        min_price=args.get("min_price"),
+        max_price=args.get("max_price"),
+        limit=args.get("limit", 3)
+    )
 
-    url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_ID}"
-    headers = {"Authorization": f"Bearer {AIRTABLE_API_KEY}"}
-    params = {
-        "filterByFormula": f"{{Name}}='{item_name}'",
-        "maxRecords": 1,
-    }
-    try:
-        resp = httpx.get(url, headers=headers, params=params, timeout=10)
-        resp.raise_for_status()
-        records = resp.json().get("records", [])
-        if not records:
-            return {"price": None, "date": None}
-        fields = records[0].get("fields", {})
-        return {
-            "price": fields.get("Price"),
-            "date": fields.get("Date"),
-        }
-    except Exception as exc:
-        return {"error": str(exc)}
+async def async_get_latest_products(ctx, args):
+    if isinstance(args, str):
+        args = json.loads(args)
+    return airtable_tools.get_latest_products(
+        days=args.get("days", 14),
+        limit=args.get("limit", 3)
+    )
+
+get_product_prices_tool = FunctionTool(
+    name="get_product_prices",
+    description="Get all price/quantity options for a product by name. Use this tool for any question about the price, cost, how much, or value of a specific product. This includes any query where the user asks for the price, cost, or value, even if not using those exact words.",
+    params_json_schema={
+        "type": "object",
+        "properties": {
+            "product_name": {
+                "type": "string",
+                "description": "The name of the product to search for"
+            }
+        },
+        "required": ["product_name"],
+        "additionalProperties": False
+    },
+    on_invoke_tool=async_get_product_prices
+)
+filter_products_tool = FunctionTool(
+    name="filter_products",
+    description="Filter products by type, condition, and price range. Use this tool for any question about finding products within a certain price range, budget, affordable, expensive, or for comparing prices. This includes any query where the user asks for products by price, cost, or value, even if not using those exact words.",
+    params_json_schema={
+        "type": "object",
+        "properties": {
+            "product_type": {
+                "type": "string",
+                "description": "Type of product to filter by"
+            },
+            "condition": {
+                "type": "string",
+                "description": "Medical condition to filter by"
+            },
+            "min_price": {
+                "type": "number",
+                "description": "Minimum price filter"
+            },
+            "max_price": {
+                "type": "number",
+                "description": "Maximum price filter"
+            },
+            "limit": {
+                "type": "integer",
+                "description": "Maximum number of results to return",
+                "default": 3
+            }
+        },
+        "required": ["product_type", "condition", "min_price", "max_price", "limit"],
+        "additionalProperties": False
+    },
+    on_invoke_tool=async_filter_products
+)
+get_latest_products_tool = FunctionTool(
+    name="get_latest_products",
+    description="Get latest or new products created or modified in the last N days.",
+    params_json_schema={
+        "type": "object",
+        "properties": {
+            "days": {
+                "type": "integer",
+                "description": "Number of days to look back for new/modified products",
+                "default": 14
+            },
+            "limit": {
+                "type": "integer",
+                "description": "Maximum number of results to return",
+                "default": 3
+            }
+        },
+        "required": ["days", "limit"],
+        "additionalProperties": False
+    },
+    on_invoke_tool=async_get_latest_products
+)
+
+# FileSearchTool for vector store retrieval
+file_search_tool = FileSearchTool(
+    vector_store_ids=[VECTOR_STORE_ID],
+    max_num_results=3,
+    include_search_results=True,
+)
+
+# Create the agent with all tools
+agent = Agent(
+    name="DoctorAssistAgent",
+    instructions=SYSTEM_PROMPT,
+    tools=[file_search_tool, get_product_prices_tool, filter_products_tool, get_latest_products_tool],
+    model="gpt-4.1-mini",
+)
 
 app = FastAPI()
 
@@ -55,72 +147,72 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve static files for local development only
-if os.environ.get("VERCEL") is None and os.path.exists("public"):
-    app.mount("/", StaticFiles(directory="public", html=True), name="public")
-
-session_threads = {}
-SESSION_COOKIE_NAME = "doctor_assist_session"
+# Preprocessing step: nudge agent for price-related queries
+def nudge_for_price(input_text: str) -> str:
+    price_keywords = ["price", "cost", "how much", "affordable", "expensive", "budget", "value", "cheapest", "most expensive"]
+    lowered = input_text.lower()
+    if any(keyword in lowered for keyword in price_keywords):
+        return f"[USER QUERY INVOLVES PRICE] {input_text}"
+    return input_text
 
 @app.post("/api/chat")
-async def chat_endpoint(request: Request, response: Response, session_id: str = Cookie(None)):
-    data = await request.json()
-    user_input = data.get("input", "")
-    if not user_input:
-        return {"error": "No input provided"}
+async def chat_endpoint(request: Request, response: Response, previous_response_id: Optional[str] = Cookie(None)):
+    try:
+        data = await request.json()
+        user_input = data.get("input", "")
+        # Prefer previous_response_id from request body if present
+        prev_id = data.get("previous_response_id") or previous_response_id
+        if not user_input:
+            return {"error": "No input provided"}
+        # Preprocess user input to nudge agent for price-related queries
+        user_input = nudge_for_price(user_input)
+        new_response_id = None
+        async def event_stream():
+            nonlocal new_response_id
+            try:
+                # Pass previous_response_id to Runner.run_streamed
+                result = Runner.run_streamed(agent, user_input, previous_response_id=prev_id)
+                from openai.types.responses import ResponseTextDeltaEvent
+                from agents import ItemHelpers
+                async for event in result.stream_events():
+                    # Stream token-by-token deltas only
+                    if event.type == "raw_response_event":
+                        if hasattr(event, "data") and isinstance(event.data, ResponseTextDeltaEvent):
+                            delta = event.data.delta
+                            if delta:
+                                yield f"data: {{\"event\": \"thread.message.delta\", \"data\": {{\"delta\": {{\"content\": [{{\"type\": \"text\", \"text\": {{\"value\": {json.dumps(delta)} }} }}] }} }} }}\n\n"
+                    # Log the final message for debugging, but do not yield to frontend
+                    elif event.type == "run_item_stream_event":
+                        if event.item.type == "message_output_item":
+                            message_text = ItemHelpers.text_message_output(event.item)
+                            print(f"[DEBUG] Final message: {message_text}")
+                            print(f"[DEBUG] event.item: {event.item}")
+                            # Capture the new response_id for session tracking (to be updated after debugging)
+                            # if hasattr(event.item, 'response_id'):
+                            #     new_response_id = event.item.response_id
+                    elif event.type == "agent_updated_stream_event":
+                        print(f"[DEBUG] Agent updated: {event.new_agent.name}")
+            except Exception as e:
+                print(f"[DEBUG] Exception in event_stream: {e}")
+                yield f"data: {{\"event\": \"error\", \"data\": {{\"error\": {json.dumps(str(e))} }} }}\n\n"
+        # Stream the response and set the cookie after the run
+        streaming_response = StreamingResponse(event_stream(), media_type="text/event-stream")
+        # Set the cookie after the run (FastAPI limitation: must set before returning, so we use a workaround)
+        async def set_cookie_and_return():
+            async for chunk in streaming_response.body_iterator:
+                if new_response_id:
+                    response.set_cookie(key="previous_response_id", value=new_response_id, httponly=True)
+                yield chunk
+        return StreamingResponse(set_cookie_and_return(), media_type="text/event-stream")
+    except Exception as e:
+        print(f"Error in chat endpoint: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"error": f"Internal server error: {str(e)}"}
 
-    if not session_id:
-        session_id = str(uuid.uuid4())
-        response.set_cookie(key=SESSION_COOKIE_NAME, value=session_id, httponly=True, samesite="lax")
-    if session_id not in session_threads:
-        thread = openai.beta.threads.create()
-        session_threads[session_id] = thread.id
-    thread_id = session_threads[session_id]
-
-    openai.beta.threads.messages.create(
-        thread_id=thread_id,
-        role="user",
-        content=user_input
-    )
-
-    def serialize_chunk(chunk):
-        if hasattr(chunk, "model_dump"):
-            return chunk.model_dump()
-        if hasattr(chunk, "dict"):
-            return chunk.dict()
-        if hasattr(chunk, "__dict__"):
-            return chunk.__dict__
-        return str(chunk)
-
-    def stream_run(run_stream):
-        for chunk in run_stream:
-            yield f"data: {json.dumps(serialize_chunk(chunk))}\n\n"
-            if chunk.event == "thread.run.requires_action":
-                outputs = []
-                for call in chunk.data.required_action.submit_tool_outputs.tool_calls:
-                    if call.function.name == "get_price_and_date":
-                        args = json.loads(call.function.arguments)
-                        item = args.get("item") or args.get("name")
-                        result = get_price_and_date(item)
-                        outputs.append({"tool_call_id": call.id, "output": json.dumps(result)})
-                if outputs:
-                    follow_stream = openai.beta.threads.runs.submit_tool_outputs(
-                        thread_id=thread_id,
-                        run_id=chunk.data.id,
-                        tool_outputs=outputs,
-                        stream=True
-                    )
-                    yield from stream_run(follow_stream)
-
-    def event_stream():
-        initial_stream = openai.beta.threads.runs.create(
-            thread_id=thread_id,
-            assistant_id=ASSISTANT_ID,
-            stream=True
-        )
-        yield from stream_run(initial_stream)
-
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+# Serve static files for local development only (after all API routes)
+if os.environ.get("VERCEL") is None and os.path.exists("public"):
+    app.mount("/", StaticFiles(directory="public", html=True), name="public")
 
 if __name__ == "__main__":
     import uvicorn
