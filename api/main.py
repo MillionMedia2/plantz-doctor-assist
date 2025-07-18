@@ -200,6 +200,7 @@ def nudge_for_price(input_text: str) -> str:
 @app.post("/api/chat")
 async def chat_endpoint(request: Request, response: Response, previous_response_id: Optional[str] = Cookie(None)):
     try:
+        print("[DEBUG] Chat endpoint called")
         data = await request.json()
         user_input = data.get("input", "")
         # Prefer previous_response_id from request body if present
@@ -208,6 +209,7 @@ async def chat_endpoint(request: Request, response: Response, previous_response_
             return {"error": "No input provided"}
         # Preprocess user input to nudge agent for price-related queries
         user_input = nudge_for_price(user_input)
+        print(f"[DEBUG] Processed user input: {user_input}")
         new_response_id = None
         async def event_stream():
             nonlocal new_response_id
