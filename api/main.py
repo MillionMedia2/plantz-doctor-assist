@@ -28,6 +28,7 @@ except ImportError:
     
     airtable_tools = MockAirtableTools()
 from typing import Optional
+from agents.models.openai_responses import OpenAIResponsesModel
 
 load_dotenv()
 
@@ -161,23 +162,17 @@ file_search_tool = FileSearchTool(
     include_search_results=True,
 )
 
-# Create the agent with all tools
-try:
-    agent = Agent(
-        name="DoctorAssistAgent",
-        instructions=SYSTEM_PROMPT,
-        tools=[file_search_tool, get_product_prices_tool, filter_products_tool, get_latest_products_tool],
-        model="gpt-4.1-mini",
-    )
-except Exception as e:
-    print(f"Error creating agent: {e}")
-    # Create a minimal agent without tools if creation fails
-    agent = Agent(
-        name="DoctorAssistAgent",
-        instructions=SYSTEM_PROMPT,
-        tools=[],
-        model="gpt-4.1-mini",
-    )
+# Create OpenAI client
+from openai import AsyncOpenAI
+openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+
+# Create the agent with all tools using the Responses API
+agent = Agent(
+    name="DoctorAssistAgent",
+    model=OpenAIResponsesModel(model="gpt-4o-mini", openai_client=openai_client),
+    tools=[file_search_tool, get_product_prices_tool, filter_products_tool, get_latest_products_tool],
+    instructions=SYSTEM_PROMPT,
+)
 
 app = FastAPI()
 
@@ -189,67 +184,78 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Preprocessing step: nudge agent for price-related queries
-def nudge_for_price(input_text: str) -> str:
-    price_keywords = ["price", "cost", "how much", "affordable", "expensive", "budget", "value", "cheapest", "most expensive"]
-    lowered = input_text.lower()
-    if any(keyword in lowered for keyword in price_keywords):
-        return f"[USER QUERY INVOLVES PRICE] {input_text}"
-    return input_text
-
 @app.post("/api/chat")
-async def chat_endpoint(request: Request, response: Response, previous_response_id: Optional[str] = Cookie(None)):
+async def chat_endpoint(request: Request, response: Response):
     try:
         print("[DEBUG] Chat endpoint called")
         data = await request.json()
         user_input = data.get("input", "")
-        # Prefer previous_response_id from request body if present
-        prev_id = data.get("previous_response_id") or previous_response_id
+        session_id = data.get("session") or str(uuid.uuid4())
+        prev_response_id = data.get("previous_response_id")
+        print(f"[DEBUG] Received session: {session_id}, previous_response_id: {prev_response_id}")
         if not user_input:
             return {"error": "No input provided"}
-        # Preprocess user input to nudge agent for price-related queries
-        user_input = nudge_for_price(user_input)
-        print(f"[DEBUG] Processed user input: {user_input}")
-        new_response_id = None
+        print(f"[DEBUG] User input: {user_input}")
+        assistant_id = None
         async def event_stream():
-            nonlocal new_response_id
+            nonlocal assistant_id
             try:
-                # Pass previous_response_id to Runner.run_streamed
-                result = Runner.run_streamed(agent, user_input, previous_response_id=prev_id)
+                from agents import SQLiteSession
+                session_obj = SQLiteSession(session_id=session_id)
+                result = Runner.run_streamed(agent, user_input, session=session_obj, previous_response_id=prev_response_id)
                 from openai.types.responses import ResponseTextDeltaEvent
                 from agents import ItemHelpers
+                assistant_id = None
+                first_delta = True
                 async for event in result.stream_events():
-                    # Stream token-by-token deltas only
-                    if event.type == "raw_response_event":
-                        if hasattr(event, "data") and isinstance(event.data, ResponseTextDeltaEvent):
-                            delta = event.data.delta
-                            if delta:
-                                yield f"data: {{\"event\": \"thread.message.delta\", \"data\": {{\"delta\": {{\"content\": [{{\"type\": \"text\", \"text\": {{\"value\": {json.dumps(delta)} }} }}] }} }} }}\n\n"
-                    # Log the final message for debugging, but do not yield to frontend
+                    print(f"[DEBUG] Event type: {event.type}")
+                    
+                    if (
+                        event.type == "raw_response_event" 
+                        and hasattr(event, 'data')
+                        and isinstance(event.data, ResponseTextDeltaEvent)
+                    ):
+                        print(f"[DEBUG] Processing ResponseTextDeltaEvent")
+                        # Convert to dict to access raw JSON fields
+                        raw = event.data.to_dict()
+                        delta_id = raw.get("item_id")  # Use "item_id" not "id"
+                        print(f"[DEBUG] Raw delta data: {raw}")
+                        print(f"[DEBUG] Delta ID: {delta_id}")
+                        
+                        # On the very first delta, grab the official ID
+                        if first_delta and delta_id:
+                            assistant_id = delta_id
+                            print(f"[DEBUG] Captured assistant_id from first delta: {assistant_id}")
+                            first_delta = False
+
+                        # Always stream out the delta text
+                        if event.data.delta:
+                            yield f"data: {{\"event\": \"thread.message.delta\", \"data\": {{\"delta\": {{\"content\": [{{\"type\": \"text\", \"text\": {{\"value\": {json.dumps(event.data.delta)} }} }}] }} }} }}\n\n"
                     elif event.type == "run_item_stream_event":
                         if event.item.type == "message_output_item":
                             message_text = ItemHelpers.text_message_output(event.item)
                             print(f"[DEBUG] Final message: {message_text}")
                             print(f"[DEBUG] event.item: {event.item}")
-                            # Capture the new response_id for session tracking (to be updated after debugging)
-                            # if hasattr(event.item, 'response_id'):
-                            #     new_response_id = event.item.response_id
+                            # Fallback: Try to get ID from the message output item
+                            if hasattr(event.item, 'raw_item') and hasattr(event.item.raw_item, 'id'):
+                                assistant_id = event.item.raw_item.id
+                                print(f"[DEBUG] Captured assistant_id from message output item: {assistant_id}")
                     elif event.type == "agent_updated_stream_event":
                         print(f"[DEBUG] Agent updated: {event.new_agent.name}")
+                # After the stream, emit a message complete event
+                yield f"data: {{\"event\":\"thread.message.complete\"}} \n\n"
+                # Then emit the new previous_response_id
+                if assistant_id:
+                    print(f"[DEBUG] Emitting previous_response_id: {assistant_id}")
+                    yield f"data: {{\"event\": \"previous_response_id\", \"data\": {{\"previous_response_id\": \"{assistant_id}\"}}}}\n\n"
+                else:
+                    print(f"[DEBUG] No assistant_id captured, cannot emit previous_response_id")
             except Exception as e:
                 print(f"[DEBUG] Exception in event_stream: {e}")
                 import traceback
                 traceback.print_exc()
                 yield f"data: {{\"event\": \"error\", \"data\": {{\"error\": {json.dumps(str(e))} }} }}\n\n"
-        # Stream the response and set the cookie after the run
-        streaming_response = StreamingResponse(event_stream(), media_type="text/event-stream")
-        # Set the cookie after the run (FastAPI limitation: must set before returning, so we use a workaround)
-        async def set_cookie_and_return():
-            async for chunk in streaming_response.body_iterator:
-                if new_response_id:
-                    response.set_cookie(key="previous_response_id", value=new_response_id, httponly=True)
-                yield chunk
-        return StreamingResponse(set_cookie_and_return(), media_type="text/event-stream")
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
     except Exception as e:
         print(f"Error in chat endpoint: {e}")
         import traceback
