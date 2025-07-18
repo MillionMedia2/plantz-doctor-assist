@@ -1,6 +1,9 @@
 fastapi
 uvicorn
 openai
+openai-agents
 python-dotenv
-agents
-requests 
+requests
+sse-starlette
+httpx
+python-multipart 
