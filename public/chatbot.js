@@ -82,6 +82,18 @@ document.addEventListener('DOMContentLoaded', function() {
     return temp.innerHTML;
   }
 
+  // --- Conversation tracking ---
+  let previous_response_id = null;
+  let session = null;
+
+  function generateUUID() {
+    // Simple UUID v4 generator
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+
   async function sendMessage() {
     const text = input.value.trim();
     if (!text) return;
@@ -91,6 +103,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
     let assistantMsg = '';
     let assistantDiv = null;
+    let lastReceivedResponseId = previous_response_id;
+    if (!session) {
+      session = generateUUID();
+      console.log('Generated new session:', session);
+    }
     function startAssistantMsg() {
       assistantDiv = document.createElement('div');
       assistantDiv.className = 'message assistantMessage';
@@ -104,10 +121,13 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     try {
+      const body = { input: text, session };
+      if (previous_response_id) body.previous_response_id = previous_response_id;
+      console.log('Sending session:', session, 'previous_response_id:', previous_response_id);
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: text })
+        body: JSON.stringify(body)
       });
       if (!response.body) throw new Error('No response body');
       const reader = response.body.getReader();
@@ -140,12 +160,20 @@ document.addEventListener('DOMContentLoaded', function() {
                     messagesDiv.scrollTop = messagesDiv.scrollHeight;
                   }
                 }
+              } else if (chunk.event === 'previous_response_id' && chunk.data && chunk.data.previous_response_id) {
+                lastReceivedResponseId = chunk.data.previous_response_id;
+                console.log('Received new previous_response_id:', lastReceivedResponseId);
               }
             } catch (e) {
               // Ignore parse errors for non-data lines
             }
           }
         }
+      }
+      // After the stream, update previous_response_id to the last received value
+      if (lastReceivedResponseId) {
+        previous_response_id = lastReceivedResponseId;
+        console.log('Final previous_response_id for next message:', previous_response_id);
       }
       if (!bubble && assistantMsg) {
         hideThinking();
