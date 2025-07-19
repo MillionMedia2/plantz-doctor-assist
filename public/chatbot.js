@@ -6,6 +6,16 @@ document.addEventListener('DOMContentLoaded', function() {
   const sendBtn = document.getElementById('send-btn');
   const chatForm = document.getElementById('chat-form');
   const thinkingDiv = document.getElementById('thinking-indicator');
+  const newChatBtn = document.getElementById('newchat-btn');
+
+  // Persist the previous response ID across page reloads within the same session
+  let previousResponseId = sessionStorage.getItem('previous_response_id');
+
+  function resetConversation() {
+    previousResponseId = null;
+    sessionStorage.removeItem('previous_response_id');
+    messagesDiv.innerHTML = '';
+  }
 
   function addMessage(role, content) {
     console.log('addMessage', role, content);
@@ -107,7 +117,7 @@ document.addEventListener('DOMContentLoaded', function() {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: text })
+        body: JSON.stringify({ input: text, previous_response_id: previousResponseId })
       });
       if (!response.body) throw new Error('No response body');
       const reader = response.body.getReader();
@@ -124,6 +134,12 @@ document.addEventListener('DOMContentLoaded', function() {
           if (line.startsWith('data: ')) {
             try {
               const chunk = JSON.parse(line.slice(6));
+              if (chunk.event === 'previous_response_id' && chunk.data) {
+                previousResponseId = chunk.data.previous_response_id;
+                if (previousResponseId) {
+                  sessionStorage.setItem('previous_response_id', previousResponseId);
+                }
+              }
               if (
                 chunk.event === 'thread.message.delta' &&
                 chunk.data &&
@@ -165,6 +181,12 @@ document.addEventListener('DOMContentLoaded', function() {
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter') sendMessage();
   });
+
+  if (newChatBtn) {
+    newChatBtn.addEventListener('click', () => {
+      resetConversation();
+    });
+  }
 
   // Remove showThinking() debug call on page load
   // Remove test message loop for production
